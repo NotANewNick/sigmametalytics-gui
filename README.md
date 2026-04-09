@@ -4,6 +4,8 @@ A reverse-engineered GUI interface for the **Sigma Metalytics Precious Metal Ver
 
 ![Image](PMV_img.png)
 
+https://github.com/user-attachments/assets/ea625671-c247-4810-8b95-9e3ec134fba9
+
 ## Disclaimer
 
 This software is an **unofficial, third-party tool** created through reverse engineering of the PMV device protocol and its companion Windows software. It is **not affiliated with, endorsed by, or supported by Sigma Metalytics**.
@@ -24,17 +26,27 @@ This tool has been developed and tested with the **PMV Investor** model. It shou
 
 ## Running
 
+### Windows
+
+Double-click **`run.bat`** — it handles everything automatically:
+1. Checks if Python is installed
+2. If not, offers to install it via `winget` (or opens the download page)
+3. Installs required packages (`pycryptodome`, `hidapi`)
+4. Launches the GUI
+
+### Linux
+
 ```bash
 python3 pmv_gui.py
 ```
 
-The GUI auto-detects the PMV device via USB HID on startup. On Linux, it will offer to install a udev rule for USB permissions if needed.
+The bundled `Crypto/` folder includes the native extensions needed for Linux. The GUI will offer to install a udev rule for USB permissions if needed.
 
 ### Dependencies
 
 - **Python 3.8+** with `tkinter`
-- **PyCryptodome** — bundled in `Crypto/` (native extensions included for Linux; on Windows run `pip install pycryptodome`)
-- **hidapi** — Windows only (`pip install hidapi`); Linux uses `/dev/hidraw` directly
+- **PyCryptodome** — bundled in `Crypto/` for Linux; on Windows, `run.bat` installs it automatically (or run `pip install pycryptodome` manually)
+- **hidapi** — Windows only; `run.bat` installs it automatically (or run `pip install hidapi` manually). Linux uses `/dev/hidraw` directly
 
 ## Files
 
@@ -42,7 +54,9 @@ The GUI auto-detects the PMV device via USB HID on startup. On Linux, it will of
 pmv_gui.py        Main GUI application (Tkinter)
 pmv_editor.py     Database model — .dat file encryption/decryption, Record/Database classes
 pmv_upload.py     Transport layer — USB HID/TCP, packet builders, encryption helpers
-Crypto/           Minimal PyCryptodome subset (AES-CBC only)
+Crypto/           Minimal PyCryptodome subset (AES-CBC only, Linux native extensions)
+run.bat           Windows launcher — auto-detects/installs Python and dependencies
+requirements.txt  Python package dependencies (for pip install)
 README.md         This file
 LICENSE           MIT License
 ```
@@ -53,6 +67,7 @@ LICENSE           MIT License
 - **Live Readings**: conductivity (%IACS), resistivity (µΩ·cm), thickness (mm), temperature (°C)
 - **Metal Detection**: auto-matches measurements against the Database Read tab records in real time; syncs the device screen to the detected metal (only when the database hasn't been edited)
 - **Bar Meter**: 5-zone color display (red/yellow/green/yellow/red) with a red triangle indicator showing the current reading; during sampling shows the running min-max range; after sampling, threshold handles can be dragged to adjust zones
+- **Computer-Side Database**: The database displayed in the Database Read tab is used as the reference for live metal detection. You can edit records, add new metals via the Learn panel, and build a custom database entirely on the computer — without flashing to the device. This lets you maintain a larger reference library for identification purposes while only flashing a curated set of up to 49 records to the device when needed. Use "Save as .dat" to save your working database to disk at any time.
 - **Learn New Metal Panel** (slide-out):
   - Configurable sample time (default 30s)
   - 2-second sensor warmup before recording begins
@@ -128,14 +143,6 @@ Flashing a database to the device follows this sequence:
 4. **END** (`0x0c`): finalizes the upload
 
 Live polling is paused during flash and resumed after completion.
-
-## Threading Model
-
-All USB communication runs in background threads to keep the UI responsive:
-
-- **Live polling** runs every 500ms, reading THICKNESS_DATA, SYSTEM_STATUS (wand), and TEMPERATURE. A `threading.Lock` serializes transport access.
-- **Flash operations** stop live polling first, wait for any in-flight poll to complete via a `threading.Event`, then run the flash sequence.
-- **SET_CURRENT_METAL** is queued and sent by the poll worker at the end of its cycle to avoid transport contention. Only sent when the database hasn't been edited (indices must match the device).
 
 ## Linux USB Permissions
 

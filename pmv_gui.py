@@ -795,7 +795,7 @@ class PMVApp:
 
         self._build_learn_tab()
         self._build_read_tab()
-        self._build_wand_tab()
+        # self._build_wand_tab()  # hidden — wand readings integrated into Learn tab
         self._nb.select(0)  # Learn Metal tab first
 
     # ── Helper: add a command row to a tab ────────────────────────────────

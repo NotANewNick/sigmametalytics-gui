@@ -911,7 +911,7 @@ class PMVApp:
             return
         db = self.loaded_db
         total = len(db.records)
-        if total > 49:
+        if total > 49 and not self._read_allow_over49.get():
             messagebox.showerror('Too Many Records',
                                  f'Database has {total} records but the device limit is 49.\n\n'
                                  f'Remove {total - 49} record(s) in the Database Read tab before flashing.')
@@ -1014,6 +1014,14 @@ class PMVApp:
 
         self._read_status_var = tk.StringVar(value='')
         ttk.Label(top, textvariable=self._read_status_var).pack(side='left', padx=8)
+
+        # Allow past 49 checkbox — far right
+        self._read_allow_over49 = tk.BooleanVar(value=False)
+        self._read_over49_cb = tk.Checkbutton(
+            top, text='Allow past 49 records, WARNING!',
+            variable=self._read_allow_over49, fg='red',
+            font=('TkDefaultFont', 9, 'bold'))
+        self._read_over49_cb.pack(side='right', padx=(8, 0))
 
         # Treeview with all fields
         self._read_cols = ('#', 'Name', 'Category',
@@ -1184,7 +1192,7 @@ class PMVApp:
         if not self.connected or not self._read_db:
             return
         total = len(self._read_db.records)
-        if total > 49:
+        if total > 49 and not self._read_allow_over49.get():
             messagebox.showerror('Too Many Records',
                                  f'Database has {total} records but the device limit is 49.\n\n'
                                  f'Remove {total - 49} record(s) in the Database Read tab before flashing.')
@@ -2154,7 +2162,7 @@ class PMVApp:
         rec = Record(name, cat_id, values)
 
         if self.loaded_db:
-            if len(self.loaded_db.records) >= 49:
+            if len(self.loaded_db.records) >= 49 and not self._read_allow_over49.get():
                 messagebox.showerror('Database Full',
                                      'The database already has 49 records (device firmware limit).\n\n'
                                      'Remove a record in the Database Read tab before adding a new one.')

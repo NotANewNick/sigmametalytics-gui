@@ -2,6 +2,8 @@
 
 A reverse-engineered GUI interface for the **Sigma Metalytics Precious Metal Verifier (PMV)** family of USB HID devices (Investor, Standard, Pro, Mini). Provides live measurement display, database management, metal learning, and wand probe integration.
 
+![Image](PMV_img.png)
+
 ## Disclaimer
 
 This software is an **unofficial, third-party tool** created through reverse engineering of the PMV device protocol and its companion Windows software. It is **not affiliated with, endorsed by, or supported by Sigma Metalytics**.
@@ -16,7 +18,7 @@ This tool has been developed and tested with the **PMV Investor** model. It shou
 
 ## Important Limitations
 
-- **49-record maximum** — The device firmware supports a maximum of 49 metal records in its database. The official Sigma Metalytics software enforces this same limit. The GUI enforces this limit on both "Add to Database" and "Save to Device" operations.
+- **49-record maximum** — The device firmware (possibly!) only supports a maximum of 49 metal records in its database. The official Sigma Metalytics software enforces this same limit. The GUI enforces this limit on both "Add to Database" and "Save to Device" operations. There is an Experimental feature to allow past 49, this is not tested and it might corrupt your device! Use at your own peril.
 - **Backup your database** — Before flashing any changes to the device, use "Save as .dat" to export a backup. The "Restore DB" button only reverts to the last state read from the device during the current session.
 - **One connection at a time** — Do not run this tool simultaneously with the official Sigma Metalytics software or any other tool that communicates with the device.
 
@@ -142,3 +144,4 @@ The GUI offers to install a udev rule on first device detection:
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="0020", MODE="0666"
 ```
 After installing, unplug and replug the device.
+

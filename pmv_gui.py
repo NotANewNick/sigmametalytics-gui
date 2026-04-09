@@ -122,7 +122,7 @@ class PMVApp:
 
         self._build_connection_panel()
         self._build_notebook()
-        self._build_log_panel()
+        # self._build_log_panel()  # hidden — no longer needed in release
 
         self._set_buttons_state('disabled')
         self.root.protocol('WM_DELETE_WINDOW', self._on_close)
@@ -776,6 +776,8 @@ class PMVApp:
         self._log_text.pack(fill='both', expand=True)
 
     def _log_msg(self, msg):
+        if not hasattr(self, '_log_text'):
+            return
         ts = datetime.now().strftime('%H:%M:%S')
         self._log_text.config(state='normal')
         self._log_text.insert('end', f'{ts}  {msg}\n')
@@ -1507,49 +1509,72 @@ class PMVApp:
                                         anchor='w', wraplength=220)
         self._learn_warn_lbl.grid(row=7, column=0, columnspan=2, sticky='w', pady=(0, 4))
 
+        # -- Scan history table
+        scan_fr = ttk.LabelFrame(self._learn_panel, text='Scans', padding=4)
+        scan_fr.grid(row=8, column=0, columnspan=2, sticky='ew', pady=(0, 4))
+        self._learn_scan_cols = ('#', 'Samples', 'Mean %IACS', 'Range')
+        self._learn_scan_tree = ttk.Treeview(scan_fr, columns=self._learn_scan_cols,
+                                              show='headings', height=4)
+        for col in self._learn_scan_cols:
+            w = 25 if col == '#' else 50 if col == 'Samples' else 75
+            self._learn_scan_tree.heading(col, text=col)
+            self._learn_scan_tree.column(col, width=w, minwidth=25)
+        self._learn_scan_tree.pack(fill='x')
+
+        scan_btn_fr = ttk.Frame(scan_fr)
+        scan_btn_fr.pack(fill='x', pady=(4, 0))
+        self._learn_add_scan_btn = ttk.Button(scan_btn_fr, text='Add Another Scan',
+                                               command=self._learn_start, state='disabled')
+        self._learn_add_scan_btn.pack(side='left', padx=(0, 4))
+        self._learn_clear_scans_btn = ttk.Button(scan_btn_fr, text='Clear All',
+                                                   command=self._learn_clear_scans,
+                                                   state='disabled')
+        self._learn_clear_scans_btn.pack(side='left')
+
         # -- Separator
         ttk.Separator(self._learn_panel, orient='horizontal').grid(
-            row=8, column=0, columnspan=2, sticky='ew', pady=(0, 8))
+            row=9, column=0, columnspan=2, sticky='ew', pady=(0, 8))
 
         # -- Record parameters
         ttk.Label(self._learn_panel, text='Specific Gravity (g/cm³):').grid(
-            row=9, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
+            row=10, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
         self._learn_sg_var = tk.StringVar(value='19.30')
         ttk.Entry(self._learn_panel, textvariable=self._learn_sg_var, width=8).grid(
-            row=9, column=1, sticky='w', pady=(0, 4))
+            row=10, column=1, sticky='w', pady=(0, 4))
 
         ttk.Label(self._learn_panel, text='Copy zones from:').grid(
-            row=10, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
+            row=11, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
         self._learn_f0_var = tk.StringVar()
         self._learn_f0_cb = ttk.Combobox(self._learn_panel, textvariable=self._learn_f0_var,
                                          width=20, state='readonly')
-        self._learn_f0_cb.grid(row=10, column=1, sticky='ew', pady=(0, 4))
+        self._learn_f0_cb.grid(row=11, column=1, sticky='ew', pady=(0, 4))
         self._learn_f0_cb.bind('<<ComboboxSelected>>', self._learn_f0_changed)
 
         ttk.Label(self._learn_panel, text='Dim+ Tolerance:').grid(
-            row=11, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
+            row=12, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
         self._learn_dimp_var = tk.StringVar(value='1.0')
         ttk.Entry(self._learn_panel, textvariable=self._learn_dimp_var, width=8).grid(
-            row=11, column=1, sticky='w', pady=(0, 4))
-
-        ttk.Label(self._learn_panel, text='Dim- Tolerance:').grid(
-            row=12, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
-        self._learn_dimm_var = tk.StringVar(value='10.0')
-        ttk.Entry(self._learn_panel, textvariable=self._learn_dimm_var, width=8).grid(
             row=12, column=1, sticky='w', pady=(0, 4))
 
-        ttk.Label(self._learn_panel, text='Weight Multiplier:').grid(
+        ttk.Label(self._learn_panel, text='Dim- Tolerance:').grid(
             row=13, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
+        self._learn_dimm_var = tk.StringVar(value='10.0')
+        ttk.Entry(self._learn_panel, textvariable=self._learn_dimm_var, width=8).grid(
+            row=13, column=1, sticky='w', pady=(0, 4))
+
+        ttk.Label(self._learn_panel, text='Weight Multiplier:').grid(
+            row=14, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
         self._learn_wm_var = tk.StringVar(value='10.0')
         ttk.Entry(self._learn_panel, textvariable=self._learn_wm_var, width=8).grid(
-            row=13, column=1, sticky='w', pady=(0, 4))
+            row=14, column=1, sticky='w', pady=(0, 4))
 
         self._learn_save_btn = ttk.Button(self._learn_panel, text='Add to Database',
                                           command=self._learn_save, state='disabled')
-        self._learn_save_btn.grid(row=14, column=0, columnspan=2, sticky='ew', pady=(8, 0))
+        self._learn_save_btn.grid(row=15, column=0, columnspan=2, sticky='ew', pady=(8, 0))
 
         # ── Internal state ───────────────────────────────────────────────
-        self._learn_samples = []       # list of %IACS readings
+        self._learn_samples = []       # list of %IACS readings (current scan)
+        self._learn_scan_history = []  # list of dicts: {samples, filtered, mean, mn, mx}
         self._learn_collecting = False
         self._learn_timer_id = None
         # Fixed bar range in %IACS
@@ -1626,6 +1651,30 @@ class PMVApp:
                         self._learn_redraw()
                         self._learn_update_thresh_label()
 
+    def _learn_clear_scans(self):
+        """Clear all scan history and reset the learn state."""
+        self._learn_scan_history = []
+        self._learn_scan_tree.delete(*self._learn_scan_tree.get_children())
+        self._learn_samples = []
+        self._learn_ready = False
+        self._learn_live_value = None
+        self._learn_save_btn.config(state='disabled')
+        self._learn_add_scan_btn.config(state='disabled')
+        self._learn_clear_scans_btn.config(state='disabled')
+        self._learn_hint_var.set('')
+        self._learn_warn_var.set('')
+        self._learn_status_var.set('Ready')
+        self._learn_prog['value'] = 0
+        # Clear live reading labels
+        self._learn_iacs_var.set('-- %IACS')
+        self._learn_res_var.set('-- µΩ·cm')
+        self._learn_thick_var.set('-- mm')
+        self._learn_temp_var.set('-- °C')
+        self._learn_match_var.set('--')
+        self._learn_match_lbl.config(fg='#888888')
+        self._learn_redraw()
+        self._learn_update_thresh_label()
+
     # ── Learn panel toggle ────────────────────────────────────────────
 
     def _learn_toggle_panel(self):
@@ -1636,8 +1685,7 @@ class PMVApp:
             self._learn_toggle_btn.config(text='Learn New Metal >>')
             self._learn_panel_visible = False
             # Clear learn state so bar returns to live scan mode
-            self._learn_ready = False
-            self._learn_samples = []
+            self._learn_clear_scans()
             self._learn_redraw()
         else:
             self._learn_panel.pack(side='right', fill='y', padx=(8, 0))
@@ -1663,7 +1711,7 @@ class PMVApp:
             duration = int(self._learn_dur_var.get())
         except ValueError:
             duration = 30
-        self._learn_samples = []
+        self._learn_samples = []  # clear current scan only, keep history
         self._learn_collecting = True
         self._learn_waiting_for_reading = True  # wait for first valid reading before timing
         self._learn_ready = False
@@ -1673,6 +1721,7 @@ class PMVApp:
         self._learn_start_btn.config(state='disabled')
         self._learn_stop_btn.config(state='normal')
         self._learn_save_btn.config(state='disabled')
+        self._learn_add_scan_btn.config(state='disabled')
         self._learn_prog['maximum'] = duration
         self._learn_prog['value'] = 0
         self._learn_status_var.set('Waiting for reading... place the metal on the sensor.')
@@ -1812,26 +1861,46 @@ class PMVApp:
         SG/Dim+/Dim-/WM from the best match."""
         if len(self._learn_samples) < 3:
             return
-        raw = sorted(self._learn_samples)
 
-        # IQR outlier removal
+        # IQR outlier removal on this scan
+        raw = sorted(self._learn_samples)
         n = len(raw)
         q1 = raw[n // 4]
         q3 = raw[3 * n // 4]
         iqr = q3 - q1
         lower = q1 - 1.5 * iqr
         upper = q3 + 1.5 * iqr
-        samples = [s for s in raw if lower <= s <= upper]
-        if len(samples) < 3:
-            samples = raw  # fallback if too aggressive
+        filtered = [s for s in raw if lower <= s <= upper]
+        if len(filtered) < 3:
+            filtered = raw
+        scan_mean = sum(filtered) / len(filtered)
+        scan_mn = min(filtered)
+        scan_mx = max(filtered)
+        removed = len(raw) - len(filtered)
 
-        mn = min(samples)
-        mx = max(samples)
-        center_iacs = sum(samples) / len(samples)  # mean of filtered samples
+        # Store this scan in history
+        scan = {'raw': len(raw), 'filtered': filtered, 'mean': scan_mean,
+                'mn': scan_mn, 'mx': scan_mx, 'removed': removed}
+        self._learn_scan_history.append(scan)
+        scan_num = len(self._learn_scan_history)
+
+        # Add row to scan table
+        self._learn_scan_tree.insert('', 'end', values=(
+            scan_num, len(filtered),
+            f'{scan_mean:.2f}', f'{scan_mn:.2f}–{scan_mx:.2f}'))
+
+        # Combine all scans for threshold calculation
+        all_filtered = []
+        for s in self._learn_scan_history:
+            all_filtered.extend(s['filtered'])
+        self._learn_samples = all_filtered  # for bar display
+
+        mn = min(all_filtered)
+        mx = max(all_filtered)
+        center_iacs = sum(all_filtered) / len(all_filtered)
 
         self._learn_obs_min = mn
         self._learn_obs_max = mx
-        removed = len(raw) - len(samples)
 
         # Try to copy zone percentages from the selected reference record
         ref_rec = None
@@ -1840,35 +1909,29 @@ class PMVApp:
             ref_rec = self.loaded_db.records[f0_idx]
 
         if ref_rec and center_iacs > 0:
-            # Reference record thresholds are in resistivity (µΩ·cm)
-            # Convert to %IACS for percentage calculation
-            ref_f1 = ref_rec.values[1]  # ResYellowLeft (lowest res = highest IACS)
-            ref_f2 = ref_rec.values[2]  # ResGreenLeft
-            ref_f3 = ref_rec.values[3]  # ResGreenRight
-            ref_f4 = ref_rec.values[4]  # ResYellowRight (highest res = lowest IACS)
+            ref_f1 = ref_rec.values[1]
+            ref_f2 = ref_rec.values[2]
+            ref_f3 = ref_rec.values[3]
+            ref_f4 = ref_rec.values[4]
             if ref_f1 > 0 and ref_f2 > 0 and ref_f3 > 0 and ref_f4 > 0:
-                # Convert to %IACS
-                ref_yl_iacs = 100.0 / ref_f4   # yellow left (lowest IACS)
-                ref_gl_iacs = 100.0 / ref_f3   # green left
-                ref_gr_iacs = 100.0 / ref_f2   # green right
-                ref_yr_iacs = 100.0 / ref_f1   # yellow right (highest IACS)
+                ref_yl_iacs = 100.0 / ref_f4
+                ref_gl_iacs = 100.0 / ref_f3
+                ref_gr_iacs = 100.0 / ref_f2
+                ref_yr_iacs = 100.0 / ref_f1
                 ref_center = (ref_gl_iacs + ref_gr_iacs) / 2.0
                 if ref_center > 0:
-                    # Calculate zone widths as percentage of center
                     green_down_pct = (ref_center - ref_gl_iacs) / ref_center
                     green_up_pct = (ref_gr_iacs - ref_center) / ref_center
                     yellow_down_pct = (ref_center - ref_yl_iacs) / ref_center
                     yellow_up_pct = (ref_yr_iacs - ref_center) / ref_center
-                    # Apply percentages to new metal's center
                     self._learn_green_left = center_iacs * (1.0 - green_down_pct)
                     self._learn_green_right = center_iacs * (1.0 + green_up_pct)
                     self._learn_yellow_left = center_iacs * (1.0 - yellow_down_pct)
                     self._learn_yellow_right = center_iacs * (1.0 + yellow_up_pct)
                 else:
-                    ref_rec = None  # fall through to default
+                    ref_rec = None
 
         if ref_rec is None:
-            # Default: use observed spread + margin, centered on mean
             spread = mx - mn
             margin = max(spread * 0.5, center_iacs * 0.03)
             self._learn_green_left = center_iacs - (spread / 2 + margin * 0.3)
@@ -1878,15 +1941,16 @@ class PMVApp:
 
         self._learn_ready = True
         self._learn_save_btn.config(state='normal')
+        self._learn_add_scan_btn.config(state='normal' if self.connected else 'disabled')
+        self._learn_clear_scans_btn.config(state='normal')
 
         # Check if the sampled metal matches an existing DB entry
-        center_res = 100.0 / ((mn + mx) / 2) if (mn + mx) > 0 else 0
+        center_res = 100.0 / center_iacs if center_iacs > 0 else 0
         if center_res > 0:
             matches = self._match_metal(center_res)
             if matches:
                 names = [m[0] for m in matches[:3]]
                 self._learn_warn_var.set(f'Similar to: {", ".join(names)}')
-                # Pre-fill SG, Dim+, Dim-, WM from the best match
                 best_rec = matches[0][2]
                 self._learn_sg_var.set(f'{best_rec.values[5]:.2f}')
                 self._learn_dimp_var.set(f'{best_rec.values[6]:.1f}')
@@ -1897,9 +1961,11 @@ class PMVApp:
         else:
             self._learn_warn_var.set('')
 
-        outlier_note = f'  ({removed} outliers removed)' if removed else ''
+        total_removed = sum(s['removed'] for s in self._learn_scan_history)
+        outlier_note = f'  ({total_removed} outliers removed)' if total_removed else ''
+        scan_note = f'  [{scan_num} scan(s)]' if scan_num > 1 else ''
         self._learn_status_var.set(
-            f'Done! {len(samples)} readings{outlier_note}  |  '
+            f'Done! {len(all_filtered)} readings{outlier_note}{scan_note}  |  '
             f'Avg: {center_iacs:.2f}  Range: {mn:.2f} – {mx:.2f} %IACS')
         self._learn_hint_var.set('Drag handles to adjust zones.')
         self._learn_redraw()
@@ -2168,21 +2234,22 @@ class PMVApp:
                                      'Remove a record in the Database Read tab before adding a new one.')
                 return
             self.loaded_db.records.append(rec)
-            self._log_msg(f'Added "{name}" as record #{len(self.loaded_db.records)}')
-            # Refresh the flash tab tree
-            self._flash_load_db(self.loaded_db)
-            # Also refresh the read tab tree if it has data
+            # Keep _read_db in sync
+            if hasattr(self, '_read_db') and self._read_db is not self.loaded_db:
+                self._read_db = self.loaded_db
+            # Refresh the read tab tree
             if hasattr(self, '_read_tree'):
                 self._read_tree.delete(*self._read_tree.get_children())
                 for i, r in enumerate(self.loaded_db.records):
-                    c = CATEGORIES.get(r.category_id, '?')
-                    v = r.values
-                    self._read_tree.insert('', 'end', values=(
-                        i, r.name.strip(), c,
-                        f'{v[0]:.1f}', f'{v[1]:.1f}', f'{v[2]:.1f}', f'{v[3]:.1f}'))
+                    self._read_add_row(i, r)
+            # Refresh the "Copy zones from" dropdown
+            self._learn_populate_f0()
+            # Reset learn panel for a new session
+            self._learn_clear_scans()
+            self._learn_name_var.set('')
             messagebox.showinfo('Added',
                                 f'"{name}" added as record #{len(self.loaded_db.records)}.\n\n'
-                                f'Use the Flash tab to save the .dat file and upload to device.')
+                                f'Use the Database Read tab to save or flash to device.')
         else:
             db = Database(description='Custom', timestamp=datetime.now().strftime(
                 '%m/%d/%Y %I:%M:%S %p'), records=[rec])
@@ -2195,6 +2262,8 @@ class PMVApp:
 
     def _flash_load_db(self, db):
         """Refresh flash tab treeview from a Database object."""
+        if not hasattr(self, '_flash_tree'):
+            return
         self._flash_tree.delete(*self._flash_tree.get_children())
         for i, rec in enumerate(db.records):
             cat = CATEGORIES.get(rec.category_id, '?')

@@ -73,24 +73,20 @@ LICENSE           MIT License
   - 2-second sensor warmup before recording begins
   - IQR-based outlier removal on collected samples
   - Zone thresholds calculated from the mean of filtered samples
-  - "Copy zones from" dropdown applies zone spread percentages from an existing reference record and auto-fills Specific Gravity, Dim+/Dim- tolerances, and Weight Multiplier
-  - Changing the reference record after sampling recalculates zones and redraws the bar
+  - **Multi-scan support**: after a scan completes, click "Add Another Scan" to take additional measurements. Each scan is shown in a history table with its sample count, mean, and range. The final thresholds are calculated from the combined average of all scans. Use "Clear All" to start over.
+  - "Copy zones from" dropdown applies zone spread percentages from an existing reference record and auto-fills Specific Gravity, Dim+/Dim- tolerances, and Weight Multiplier. Changing the reference after sampling recalculates zones and redraws the bar.
   - Warns (in red) if the sampled metal is similar to an existing database entry, and pre-fills values from the best match
   - Supports both main sensor and wand probe readings (wand overrides when connected)
   - Stop Sampling button; hiding the panel also stops sampling and clears the learn state
+  - "Add to Database" saves the new record to the Database Read tab and resets the panel for the next metal
 
 ### Database Read
 - Auto-reads all records from the device on connect (up to 49 records)
 - Editable table — double-click any cell to modify (category uses a dropdown)
 - **Save as .dat** — export the current table to an encrypted `.dat` file
 - **Load from File** — import a `.dat` file into the table
-- **Save to Device** — flash the current table to the device (blocked if over 49 records)
+- **Save to Device** — flash the current table to the device (blocked if over 49 records unless the experimental "Allow past 49 records" checkbox is enabled)
 - **Restore DB** — revert to the original device data (appears after any edit, load, or flash)
-
-### Flash
-- Load a `.dat` file and flash it to the device
-- Shows record count and flash progress
-- Blocked if the database exceeds 49 records
 
 ### Device Info
 - Query firmware version, device status, system info, and other diagnostic commands

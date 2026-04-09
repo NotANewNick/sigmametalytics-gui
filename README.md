@@ -16,7 +16,7 @@ This tool has been developed and tested with the **PMV Investor** model. It shou
 
 ## Important Limitations
 
-- **49-record maximum** — The device firmware supports a maximum of 49 metal records in its database. The official Sigma Metalytics software enforces this same limit. Do not attempt to exceed it — behavior beyond 49 records is untested and may corrupt the device database or cause the device to malfunction.
+- **49-record maximum** — The device firmware supports a maximum of 49 metal records in its database. The official Sigma Metalytics software enforces this same limit. The GUI enforces this limit on both "Add to Database" and "Save to Device" operations.
 - **Backup your database** — Before flashing any changes to the device, use "Save as .dat" to export a backup. The "Restore DB" button only reverts to the last state read from the device during the current session.
 - **One connection at a time** — Do not run this tool simultaneously with the official Sigma Metalytics software or any other tool that communicates with the device.
 
@@ -42,27 +42,41 @@ pmv_editor.py     Database model — .dat file encryption/decryption, Record/Dat
 pmv_upload.py     Transport layer — USB HID/TCP, packet builders, encryption helpers
 Crypto/           Minimal PyCryptodome subset (AES-CBC only)
 README.md         This file
+LICENSE           MIT License
 ```
 
 ## GUI Tabs
 
 ### Learn Metal
-- **Live Readings**: conductivity (%IACS), resistivity (uOhm.cm), thickness (mm), temperature (C)
-- **Metal Detection**: auto-matches measurements against all database records, syncs device screen to the detected metal
-- **Bar Meter**: 5-zone color display (red/yellow/green/yellow/red) with live needle; after sampling, threshold handles can be dragged to adjust zones
-- **Learn Panel**: slide-out panel to sample a new metal and add it to the database
+- **Live Readings**: conductivity (%IACS), resistivity (µΩ·cm), thickness (mm), temperature (°C)
+- **Metal Detection**: auto-matches measurements against the Database Read tab records in real time; syncs the device screen to the detected metal (only when the database hasn't been edited)
+- **Bar Meter**: 5-zone color display (red/yellow/green/yellow/red) with a red triangle indicator showing the current reading; during sampling shows the running min-max range; after sampling, threshold handles can be dragged to adjust zones
+- **Learn New Metal Panel** (slide-out):
+  - Configurable sample time (default 30s)
+  - 2-second sensor warmup before recording begins
+  - IQR-based outlier removal on collected samples
+  - Zone thresholds calculated from the mean of filtered samples
+  - "Copy zones from" dropdown applies zone spread percentages from an existing reference record and auto-fills Specific Gravity, Dim+/Dim- tolerances, and Weight Multiplier
+  - Changing the reference record after sampling recalculates zones and redraws the bar
+  - Warns (in red) if the sampled metal is similar to an existing database entry, and pre-fills values from the best match
+  - Supports both main sensor and wand probe readings (wand overrides when connected)
+  - Stop Sampling button; hiding the panel also stops sampling and clears the learn state
 
 ### Database Read
 - Auto-reads all records from the device on connect (up to 49 records)
 - Editable table — double-click any cell to modify (category uses a dropdown)
 - **Save as .dat** — export the current table to an encrypted `.dat` file
 - **Load from File** — import a `.dat` file into the table
-- **Save to Device** — flash the current table to the device
+- **Save to Device** — flash the current table to the device (blocked if over 49 records)
 - **Restore DB** — revert to the original device data (appears after any edit, load, or flash)
 
-### Wand
-- Wand configuration and status queries
-- Erase wand (with confirmation prompt)
+### Flash
+- Load a `.dat` file and flash it to the device
+- Shows record count and flash progress
+- Blocked if the database exceeds 49 records
+
+### Device Info
+- Query firmware version, device status, system info, and other diagnostic commands
 
 ## Device Protocol
 
@@ -74,34 +88,34 @@ The PMV communicates over USB HID (VID `0x04D8`, PID `0x0020`). Every command is
 |--------|-------------------|---------------------------------------------------|
 | `0x04` | FIRMWARE_VER      | Firmware version string (handshake)               |
 | `0x05` | STATUS            | Device status (handshake before flash)            |
-| `0x09` | TEMPERATURE       | Float32 at byte 1 — probe temperature in C       |
+| `0x09` | TEMPERATURE       | Float32 at byte 1 — probe temperature in °C      |
 | `0x0a` | BEGIN_DB_DL       | Start database flash to device                    |
 | `0x0b` | DB_RECORD         | Send one record during flash                      |
 | `0x0c` | END_DB_DL         | Finish database flash                             |
 | `0x14` | THICKNESS_DATA    | 9x float32 — field[3]=thickness, field[5]=resistivity |
 | `0x1d` | SYSTEM_INFO       | Bytes 1-8 binary header, bytes 9+ = DB name ASCII |
-| `0x1e` | SYSTEM_STATUS     | Float32 at byte 10 = wand resistivity (uOhm.cm)  |
+| `0x1e` | SYSTEM_STATUS     | Float32 at byte 10 = wand resistivity (µΩ·cm)    |
 | `0x22` | BEGIN_DB_UL       | Start reading database from device                |
 | `0x23` | DB_RECORD_UL      | Read one record from device by index              |
 | `0x24` | SET_METAL         | Set device screen to show a specific metal record |
 
 ### Measurement Units
 
-- **Resistivity**: uOhm.cm (micro-ohm centimeters) — stored in DB thresholds and THICKNESS_DATA field[5]
+- **Resistivity**: µΩ·cm (micro-ohm centimeters) — stored in DB thresholds and THICKNESS_DATA field[5]
 - **Conductivity**: %IACS = `100 / resistivity` — displayed on the bar meter
 - Bar meter is **reversed**: high %IACS on left, low on right (matches device screen)
-- Bar range: 0-100 %IACS
+- Bar range: 0–100 %IACS
 
 ### Zone Matching
 
 For a resistivity reading against a record's threshold values [f1, f2, f3, f4]:
 - `f2 <= res <= f3` = **GREEN** (genuine match)
 - `f1 <= res < f2` or `f3 < res <= f4` = **YELLOW** (caution)
-- Outside f1-f4 = **RED** (fail / no match)
+- Outside f1–f4 = **RED** (fail / no match)
 
 ### Wand Probe
 
-The eddy current wand probe reading is at SYSTEM_STATUS (`0x1e`) byte offset 10, float32 in uOhm.cm. Valid range: 0.1-500. When available, the wand reading is preferred over the main sensor.
+The eddy current wand probe reading is at SYSTEM_STATUS (`0x1e`) byte offset 10, float32 in µΩ·cm. Valid range: 0.1–500. When available, the wand reading is preferred over the main sensor.
 
 ### Database Flash Protocol
 
@@ -119,7 +133,7 @@ All USB communication runs in background threads to keep the UI responsive:
 
 - **Live polling** runs every 500ms, reading THICKNESS_DATA, SYSTEM_STATUS (wand), and TEMPERATURE. A `threading.Lock` serializes transport access.
 - **Flash operations** stop live polling first, wait for any in-flight poll to complete via a `threading.Event`, then run the flash sequence.
-- **SET_CURRENT_METAL** is queued and sent by the poll worker at the end of its cycle to avoid transport contention.
+- **SET_CURRENT_METAL** is queued and sent by the poll worker at the end of its cycle to avoid transport contention. Only sent when the database hasn't been edited (indices must match the device).
 
 ## Linux USB Permissions
 

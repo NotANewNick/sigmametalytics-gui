@@ -394,9 +394,9 @@ class PMVApp:
     # ── Metal matching ───────────────────────────────────────────────
 
     def _match_metal(self, resistivity):
-        """Match a resistivity value against the device DB thresholds.
+        """Match a resistivity value against the Database Read tab's current records.
         Returns list of (display_name, zone, record, index) for all matches, best first."""
-        db = self._device_db
+        db = getattr(self, '_read_db', None) or self._device_db
         if not db:
             return []
 
@@ -547,10 +547,12 @@ class PMVApp:
                     self._learn_match_lbl.config(fg='#ccaa00')
                 # Set bar zones from matched record
                 self._learn_scan_rec = top_rec
-                # Sync device screen to matched metal (only on change)
+                # Sync device screen to matched metal (only on change, and only
+                # if DB hasn't been edited — edited DB may not match device)
                 if top_idx != self._device_current_metal_idx:
                     self._device_current_metal_idx = top_idx
-                    self._set_device_metal(top_idx)
+                    if not getattr(self, '_read_dirty', False):
+                        self._set_device_metal(top_idx)
             else:
                 self._learn_match_var.set('No match')
                 self._learn_match_lbl.config(fg='#888888')
@@ -559,6 +561,8 @@ class PMVApp:
             self._learn_match_var.set('--')
             self._learn_match_lbl.config(fg='#888888')
             self._learn_scan_rec = None
+            # Reset so next reading triggers a fresh SET_CURRENT_METAL
+            self._device_current_metal_idx = -1
 
         # Update the bar needle if on the learn tab and not sampling
         if not self._learn_collecting and self._learn_live_value is not None:
@@ -907,6 +911,11 @@ class PMVApp:
             return
         db = self.loaded_db
         total = len(db.records)
+        if total > 49:
+            messagebox.showerror('Too Many Records',
+                                 f'Database has {total} records but the device limit is 49.\n\n'
+                                 f'Remove {total - 49} record(s) in the Database Read tab before flashing.')
+            return
         self._flash_prog['maximum'] = total + 2  # handshake + begin + records + end
         self._flash_prog['value'] = 0
         self._flash_btn.config(state='disabled')
@@ -1174,8 +1183,14 @@ class PMVApp:
         and waits for any in-flight poll to complete before starting."""
         if not self.connected or not self._read_db:
             return
+        total = len(self._read_db.records)
+        if total > 49:
+            messagebox.showerror('Too Many Records',
+                                 f'Database has {total} records but the device limit is 49.\n\n'
+                                 f'Remove {total - 49} record(s) in the Database Read tab before flashing.')
+            return
         if not messagebox.askyesno('Save to Device',
-                                   f'Flash {len(self._read_db.records)} records to device?'):
+                                   f'Flash {total} records to device?'):
             return
         db = self._read_db
         # Update description from name field
@@ -1426,7 +1441,7 @@ class PMVApp:
         # ── "Learn New Metal" toggle button ──────────────────────────────
         self._learn_toggle_btn = ttk.Button(left, text='Learn New Metal >>',
                                             command=self._learn_toggle_panel)
-        self._learn_toggle_btn.pack(anchor='w', pady=(4, 0))
+        self._learn_toggle_btn.pack(anchor='e', pady=(4, 0))
 
         # ── Right panel (hidden by default) ──────────────────────────────
         self._learn_panel = ttk.LabelFrame(hpane, text='Learn New Metal', padding=8)
@@ -1459,7 +1474,7 @@ class PMVApp:
                                            command=self._learn_start)
         self._learn_start_btn.pack(side='left', padx=(0, 4))
         self._cmd_buttons.append(self._learn_start_btn)
-        self._learn_stop_btn = ttk.Button(btn_fr, text='Stop', command=self._learn_stop,
+        self._learn_stop_btn = ttk.Button(btn_fr, text='Stop Sampling', command=self._learn_stop,
                                           state='disabled')
         self._learn_stop_btn.pack(side='left')
 
@@ -1468,47 +1483,62 @@ class PMVApp:
         ttk.Label(self._learn_panel, textvariable=self._learn_status_var,
                   wraplength=220).grid(row=4, column=0, columnspan=2, sticky='w', pady=(0, 2))
         self._learn_prog = ttk.Progressbar(self._learn_panel, mode='determinate', length=200)
-        self._learn_prog.grid(row=5, column=0, columnspan=2, sticky='ew', pady=(0, 8))
+        self._learn_prog.grid(row=5, column=0, columnspan=2, sticky='ew', pady=(0, 2))
+
+        # -- Hint label (orange bold, hidden until sampling done)
+        self._learn_hint_var = tk.StringVar()
+        self._learn_hint_lbl = tk.Label(self._learn_panel, textvariable=self._learn_hint_var,
+                                        fg='#ff8c00', font=('TkDefaultFont', 9, 'bold'),
+                                        anchor='w', wraplength=220)
+        self._learn_hint_lbl.grid(row=6, column=0, columnspan=2, sticky='w', pady=(0, 2))
+
+        # -- Warning label (red, hidden until similar metal found)
+        self._learn_warn_var = tk.StringVar()
+        self._learn_warn_lbl = tk.Label(self._learn_panel, textvariable=self._learn_warn_var,
+                                        fg='#ff2222', font=('TkDefaultFont', 9, 'bold'),
+                                        anchor='w', wraplength=220)
+        self._learn_warn_lbl.grid(row=7, column=0, columnspan=2, sticky='w', pady=(0, 4))
 
         # -- Separator
         ttk.Separator(self._learn_panel, orient='horizontal').grid(
-            row=6, column=0, columnspan=2, sticky='ew', pady=(0, 8))
+            row=8, column=0, columnspan=2, sticky='ew', pady=(0, 8))
 
         # -- Record parameters
         ttk.Label(self._learn_panel, text='Specific Gravity (g/cm³):').grid(
-            row=7, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
+            row=9, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
         self._learn_sg_var = tk.StringVar(value='19.30')
         ttk.Entry(self._learn_panel, textvariable=self._learn_sg_var, width=8).grid(
-            row=7, column=1, sticky='w', pady=(0, 4))
+            row=9, column=1, sticky='w', pady=(0, 4))
 
-        ttk.Label(self._learn_panel, text='Copy ResGreenLeft from:').grid(
-            row=8, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
+        ttk.Label(self._learn_panel, text='Copy zones from:').grid(
+            row=10, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
         self._learn_f0_var = tk.StringVar()
         self._learn_f0_cb = ttk.Combobox(self._learn_panel, textvariable=self._learn_f0_var,
                                          width=20, state='readonly')
-        self._learn_f0_cb.grid(row=8, column=1, sticky='ew', pady=(0, 4))
+        self._learn_f0_cb.grid(row=10, column=1, sticky='ew', pady=(0, 4))
+        self._learn_f0_cb.bind('<<ComboboxSelected>>', self._learn_f0_changed)
 
         ttk.Label(self._learn_panel, text='Dim+ Tolerance:').grid(
-            row=9, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
+            row=11, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
         self._learn_dimp_var = tk.StringVar(value='1.0')
         ttk.Entry(self._learn_panel, textvariable=self._learn_dimp_var, width=8).grid(
-            row=9, column=1, sticky='w', pady=(0, 4))
+            row=11, column=1, sticky='w', pady=(0, 4))
 
         ttk.Label(self._learn_panel, text='Dim- Tolerance:').grid(
-            row=10, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
+            row=12, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
         self._learn_dimm_var = tk.StringVar(value='10.0')
         ttk.Entry(self._learn_panel, textvariable=self._learn_dimm_var, width=8).grid(
-            row=10, column=1, sticky='w', pady=(0, 4))
+            row=12, column=1, sticky='w', pady=(0, 4))
 
         ttk.Label(self._learn_panel, text='Weight Multiplier:').grid(
-            row=11, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
+            row=13, column=0, sticky='w', padx=(0, 4), pady=(0, 4))
         self._learn_wm_var = tk.StringVar(value='10.0')
         ttk.Entry(self._learn_panel, textvariable=self._learn_wm_var, width=8).grid(
-            row=11, column=1, sticky='w', pady=(0, 4))
+            row=13, column=1, sticky='w', pady=(0, 4))
 
         self._learn_save_btn = ttk.Button(self._learn_panel, text='Add to Database',
                                           command=self._learn_save, state='disabled')
-        self._learn_save_btn.grid(row=12, column=0, columnspan=2, sticky='ew', pady=(8, 0))
+        self._learn_save_btn.grid(row=14, column=0, columnspan=2, sticky='ew', pady=(8, 0))
 
         # ── Internal state ───────────────────────────────────────────────
         self._learn_samples = []       # list of %IACS readings
@@ -1546,21 +1576,74 @@ class PMVApp:
         if items:
             self._learn_f0_cb['values'] = items
             self._learn_f0_cb.current(0)
+            self._learn_f0_changed()
         else:
             self._learn_f0_cb['values'] = ['(load a .dat file in Flash tab first)']
             self._learn_f0_cb.current(0)
+
+    def _learn_f0_changed(self, _event=None):
+        """When the user selects a different record in 'Copy zones from',
+        update Specific Gravity, Dim+, Dim-, Weight Multiplier from that record.
+        If sampling is done, also recalculate zone thresholds from the new reference."""
+        idx = self._learn_f0_cb.current()
+        if self.loaded_db and 0 <= idx < len(self.loaded_db.records):
+            rec = self.loaded_db.records[idx]
+            self._learn_sg_var.set(f'{rec.values[5]:.2f}')
+            self._learn_dimp_var.set(f'{rec.values[6]:.1f}')
+            self._learn_dimm_var.set(f'{rec.values[7]:.1f}')
+            self._learn_wm_var.set(f'{rec.values[8]:.1f}')
+
+            # Recalculate zones if we already have samples
+            if self._learn_ready and len(self._learn_samples) >= 3:
+                center_iacs = sum(self._learn_samples) / len(self._learn_samples)
+                ref_f1 = rec.values[1]
+                ref_f2 = rec.values[2]
+                ref_f3 = rec.values[3]
+                ref_f4 = rec.values[4]
+                if ref_f1 > 0 and ref_f2 > 0 and ref_f3 > 0 and ref_f4 > 0 and center_iacs > 0:
+                    ref_yl_iacs = 100.0 / ref_f4
+                    ref_gl_iacs = 100.0 / ref_f3
+                    ref_gr_iacs = 100.0 / ref_f2
+                    ref_yr_iacs = 100.0 / ref_f1
+                    ref_center = (ref_gl_iacs + ref_gr_iacs) / 2.0
+                    if ref_center > 0:
+                        green_down_pct = (ref_center - ref_gl_iacs) / ref_center
+                        green_up_pct = (ref_gr_iacs - ref_center) / ref_center
+                        yellow_down_pct = (ref_center - ref_yl_iacs) / ref_center
+                        yellow_up_pct = (ref_yr_iacs - ref_center) / ref_center
+                        self._learn_green_left = center_iacs * (1.0 - green_down_pct)
+                        self._learn_green_right = center_iacs * (1.0 + green_up_pct)
+                        self._learn_yellow_left = center_iacs * (1.0 - yellow_down_pct)
+                        self._learn_yellow_right = center_iacs * (1.0 + yellow_up_pct)
+                        self._learn_redraw()
+                        self._learn_update_thresh_label()
 
     # ── Learn panel toggle ────────────────────────────────────────────
 
     def _learn_toggle_panel(self):
         if self._learn_panel_visible:
+            if self._learn_collecting:
+                self._learn_stop()
             self._learn_panel.pack_forget()
             self._learn_toggle_btn.config(text='Learn New Metal >>')
             self._learn_panel_visible = False
+            # Clear learn state so bar returns to live scan mode
+            self._learn_ready = False
+            self._learn_samples = []
+            self._learn_redraw()
         else:
             self._learn_panel.pack(side='right', fill='y', padx=(8, 0))
             self._learn_toggle_btn.config(text='<< Hide')
             self._learn_panel_visible = True
+            # Expand window to fit the panel, preserving current position
+            self.root.update_idletasks()
+            req_w = self.root.winfo_reqwidth()
+            cur_w = self.root.winfo_width()
+            cur_h = self.root.winfo_height()
+            if req_w > cur_w:
+                x = self.root.winfo_x()
+                y = self.root.winfo_y()
+                self.root.geometry(f'{req_w}x{cur_h}+{x}+{y}')
 
     # ── Sampling ─────────────────────────────────────────────────────
 
@@ -1574,15 +1657,17 @@ class PMVApp:
             duration = 30
         self._learn_samples = []
         self._learn_collecting = True
+        self._learn_waiting_for_reading = True  # wait for first valid reading before timing
         self._learn_ready = False
         self._learn_live_value = None
+        self._learn_hint_var.set('')
+        self._learn_warn_var.set('')
         self._learn_start_btn.config(state='disabled')
         self._learn_stop_btn.config(state='normal')
         self._learn_save_btn.config(state='disabled')
         self._learn_prog['maximum'] = duration
         self._learn_prog['value'] = 0
-        self._learn_status_var.set('Sampling... keep the metal on the sensor.')
-        self._learn_sample_start = datetime.now()
+        self._learn_status_var.set('Waiting for reading... place the metal on the sensor.')
         self._learn_sample_duration = duration
         self._learn_poll()
 
@@ -1603,15 +1688,18 @@ class PMVApp:
         if not self._learn_collecting:
             return
 
-        elapsed = (datetime.now() - self._learn_sample_start).total_seconds()
-        if elapsed >= self._learn_sample_duration:
-            self._learn_collecting = False
-            self._learn_stop_btn.config(state='disabled')
-            self._learn_start_btn.config(state='normal' if self.connected else 'disabled')
-            self._learn_finish()
-            return
-
-        self._learn_prog['value'] = elapsed
+        # Don't start timing until warmup is done
+        if self._learn_waiting_for_reading or getattr(self, '_learn_warmup', False):
+            elapsed = 0
+        else:
+            elapsed = (datetime.now() - self._learn_sample_start).total_seconds()
+            if elapsed >= self._learn_sample_duration:
+                self._learn_collecting = False
+                self._learn_stop_btn.config(state='disabled')
+                self._learn_start_btn.config(state='normal' if self.connected else 'disabled')
+                self._learn_finish()
+                return
+            self._learn_prog['value'] = elapsed
 
         def worker():
             try:
@@ -1630,6 +1718,18 @@ class PMVApp:
                 if thickness > 0.01:
                     readings['thickness'] = thickness
 
+                # SYSTEM_STATUS (0x1e) — wand resistivity at byte offset 10
+                pkt = build_generic_packet(0x1e)
+                with self._lock:
+                    resp = self.transport.send_recv(pkt)
+                plain = decrypt_ack(resp)
+                if plain[0] not in (0x02, 0x03) and len(plain) >= 14:
+                    wand_res = struct.unpack_from('<f', plain, 10)[0]
+                    if 0.1 < wand_res < 500:
+                        readings['iacs'] = 100.0 / wand_res
+                        readings['resistivity'] = wand_res
+                        readings['source'] = 'wand'
+
                 # TEMPERATURE (0x09)
                 pkt = build_generic_packet(0x09)
                 with self._lock:
@@ -1647,11 +1747,33 @@ class PMVApp:
         self._learn_timer_id = self.root.after(500, self._learn_poll)
 
     def _learn_got_sample(self, readings, elapsed):
+        """Process a sample reading from the learn poll worker. On first valid
+        reading, starts a warmup period to let the sensor stabilize before
+        recording samples. After warmup, appends %IACS values to the sample list."""
+        WARMUP_SECONDS = 2  # warmup to skip initial sensor noise
+
+        # Start the warmup timer on first valid reading
+        if self._learn_waiting_for_reading and 'iacs' in readings:
+            self._learn_waiting_for_reading = False
+            self._learn_warmup = True
+            self._learn_sample_start = datetime.now()
+            self._learn_status_var.set('Warming up sensor...')
+
+        # Check if warmup period is over
+        if getattr(self, '_learn_warmup', False):
+            warmup_elapsed = (datetime.now() - self._learn_sample_start).total_seconds()
+            if warmup_elapsed >= WARMUP_SECONDS:
+                self._learn_warmup = False
+                # Reset the timer start so the actual sampling duration begins now
+                self._learn_sample_start = datetime.now()
+                self._learn_status_var.set('Sampling... keep the metal on the sensor.')
+
         # Update live readout labels
+        src = ' (wand)' if readings.get('source') == 'wand' else ''
         if 'iacs' in readings:
-            self._learn_iacs_var.set(f'{readings["iacs"]:.2f} %IACS')
+            self._learn_iacs_var.set(f'{readings["iacs"]:.2f} %IACS{src}')
         if 'resistivity' in readings:
-            self._learn_res_var.set(f'{readings["resistivity"]:.4f} µΩ·cm')
+            self._learn_res_var.set(f'{readings["resistivity"]:.4f} µΩ·cm{src}')
         if 'thickness' in readings:
             self._learn_thick_var.set(f'{readings["thickness"]:.3f} mm')
         if 'temperature' in readings:
@@ -1659,51 +1781,119 @@ class PMVApp:
 
         iacs = readings.get('iacs')
         if iacs is not None and iacs > 0.1:
-            self._learn_samples.append(iacs)
             self._learn_live_value = iacs
-            n = len(self._learn_samples)
-            mn = min(self._learn_samples)
-            mx = max(self._learn_samples)
-            self._learn_status_var.set(
-                f'Sampling... {n} readings  |  '
-                f'Live: {iacs:.2f} %IACS  |  '
-                f'Range: {mn:.2f} – {mx:.2f}')
+            # Only record samples after warmup
+            if not getattr(self, '_learn_warmup', False) and not self._learn_waiting_for_reading:
+                self._learn_samples.append(iacs)
+                n = len(self._learn_samples)
+                mn = min(self._learn_samples)
+                mx = max(self._learn_samples)
+                self._learn_status_var.set(
+                    f'Sampling... {n} readings  |  '
+                    f'Live: {iacs:.2f} %IACS  |  '
+                    f'Range: {mn:.2f} – {mx:.2f}')
             self._learn_redraw()
 
     def _learn_finish(self):
-        """Calculate recommended thresholds from collected samples."""
+        """Calculate recommended thresholds from collected samples.
+        Applies IQR outlier removal, then uses the mean of filtered samples as
+        center. If a reference record is selected, copies its zone spread
+        percentages (green/yellow widths as % of center) and applies them to
+        the new metal's center. Otherwise uses a default margin. If the sampled
+        metal matches an existing DB entry, warns the user and pre-fills
+        SG/Dim+/Dim-/WM from the best match."""
         if len(self._learn_samples) < 3:
             return
-        samples = self._learn_samples
+        raw = sorted(self._learn_samples)
+
+        # IQR outlier removal
+        n = len(raw)
+        q1 = raw[n // 4]
+        q3 = raw[3 * n // 4]
+        iqr = q3 - q1
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+        samples = [s for s in raw if lower <= s <= upper]
+        if len(samples) < 3:
+            samples = raw  # fallback if too aggressive
+
         mn = min(samples)
         mx = max(samples)
-        spread = mx - mn
-        margin = max(spread * 0.5, (mn + mx) / 2 * 0.03)  # at least 3% of center
+        center_iacs = sum(samples) / len(samples)  # mean of filtered samples
 
         self._learn_obs_min = mn
         self._learn_obs_max = mx
-        self._learn_green_left = mn - margin * 0.3
-        self._learn_green_right = mx + margin * 0.3
-        self._learn_yellow_left = mn - margin
-        self._learn_yellow_right = mx + margin
+        removed = len(raw) - len(samples)
+
+        # Try to copy zone percentages from the selected reference record
+        ref_rec = None
+        f0_idx = self._learn_f0_cb.current()
+        if self.loaded_db and 0 <= f0_idx < len(self.loaded_db.records):
+            ref_rec = self.loaded_db.records[f0_idx]
+
+        if ref_rec and center_iacs > 0:
+            # Reference record thresholds are in resistivity (µΩ·cm)
+            # Convert to %IACS for percentage calculation
+            ref_f1 = ref_rec.values[1]  # ResYellowLeft (lowest res = highest IACS)
+            ref_f2 = ref_rec.values[2]  # ResGreenLeft
+            ref_f3 = ref_rec.values[3]  # ResGreenRight
+            ref_f4 = ref_rec.values[4]  # ResYellowRight (highest res = lowest IACS)
+            if ref_f1 > 0 and ref_f2 > 0 and ref_f3 > 0 and ref_f4 > 0:
+                # Convert to %IACS
+                ref_yl_iacs = 100.0 / ref_f4   # yellow left (lowest IACS)
+                ref_gl_iacs = 100.0 / ref_f3   # green left
+                ref_gr_iacs = 100.0 / ref_f2   # green right
+                ref_yr_iacs = 100.0 / ref_f1   # yellow right (highest IACS)
+                ref_center = (ref_gl_iacs + ref_gr_iacs) / 2.0
+                if ref_center > 0:
+                    # Calculate zone widths as percentage of center
+                    green_down_pct = (ref_center - ref_gl_iacs) / ref_center
+                    green_up_pct = (ref_gr_iacs - ref_center) / ref_center
+                    yellow_down_pct = (ref_center - ref_yl_iacs) / ref_center
+                    yellow_up_pct = (ref_yr_iacs - ref_center) / ref_center
+                    # Apply percentages to new metal's center
+                    self._learn_green_left = center_iacs * (1.0 - green_down_pct)
+                    self._learn_green_right = center_iacs * (1.0 + green_up_pct)
+                    self._learn_yellow_left = center_iacs * (1.0 - yellow_down_pct)
+                    self._learn_yellow_right = center_iacs * (1.0 + yellow_up_pct)
+                else:
+                    ref_rec = None  # fall through to default
+
+        if ref_rec is None:
+            # Default: use observed spread + margin, centered on mean
+            spread = mx - mn
+            margin = max(spread * 0.5, center_iacs * 0.03)
+            self._learn_green_left = center_iacs - (spread / 2 + margin * 0.3)
+            self._learn_green_right = center_iacs + (spread / 2 + margin * 0.3)
+            self._learn_yellow_left = center_iacs - (spread / 2 + margin)
+            self._learn_yellow_right = center_iacs + (spread / 2 + margin)
 
         self._learn_ready = True
         self._learn_save_btn.config(state='normal')
 
         # Check if the sampled metal matches an existing DB entry
-        existing_match = ''
         center_res = 100.0 / ((mn + mx) / 2) if (mn + mx) > 0 else 0
         if center_res > 0:
             matches = self._match_metal(center_res)
             if matches:
                 names = [m[0] for m in matches[:3]]
-                existing_match = f'  *** Already known: {", ".join(names)}'
+                self._learn_warn_var.set(f'Similar to: {", ".join(names)}')
+                # Pre-fill SG, Dim+, Dim-, WM from the best match
+                best_rec = matches[0][2]
+                self._learn_sg_var.set(f'{best_rec.values[5]:.2f}')
+                self._learn_dimp_var.set(f'{best_rec.values[6]:.1f}')
+                self._learn_dimm_var.set(f'{best_rec.values[7]:.1f}')
+                self._learn_wm_var.set(f'{best_rec.values[8]:.1f}')
+            else:
+                self._learn_warn_var.set('')
+        else:
+            self._learn_warn_var.set('')
 
+        outlier_note = f'  ({removed} outliers removed)' if removed else ''
         self._learn_status_var.set(
-            f'Done! {len(samples)} readings  |  '
-            f'Range: {mn:.2f} – {mx:.2f} %IACS  |  '
-            f'Drag handles to adjust zones.'
-            f'{existing_match}')
+            f'Done! {len(samples)} readings{outlier_note}  |  '
+            f'Avg: {center_iacs:.2f}  Range: {mn:.2f} – {mx:.2f} %IACS')
+        self._learn_hint_var.set('Drag handles to adjust zones.')
         self._learn_redraw()
         self._learn_update_thresh_label()
 
@@ -1769,11 +1959,6 @@ class PMVApp:
 
         scan_rec = getattr(self, '_learn_scan_rec', None)
 
-        if not self._learn_samples and not self._learn_ready and scan_rec is None:
-            c.create_text(cw / 2, ch / 2, text='Waiting for samples...',
-                          fill='#555555', font=('TkDefaultFont', 14))
-            return
-
         samples = self._learn_samples
 
         def vx(val):
@@ -1781,21 +1966,18 @@ class PMVApp:
 
         def _draw_zones(yl, gl, gr, yr, draggable=False):
             """Draw the 5-zone bar (red/yellow/green/yellow/red) using x-sorted positions."""
-            # Sort thresholds by x position on canvas
             xs = sorted([
                 (vx(yl), yl, 'YL', '#b8860b'),
                 (vx(gl), gl, 'GL', '#00cc00'),
                 (vx(gr), gr, 'GR', '#00cc00'),
                 (vx(yr), yr, 'YR', '#b8860b'),
             ])
-            # 5 zone segments: red | yellow | green | yellow | red
             colors = ['#8b0000', '#b8860b', '#006400', '#b8860b', '#8b0000']
             edges = [bx0] + [x for x, *_ in xs] + [bx1]
             for i, col in enumerate(colors):
                 c.create_rectangle(edges[i], by0, edges[i + 1], by1, fill=col, outline='')
             c.create_rectangle(bx0, by0, bx1, by1, outline='#444444', width=1)
 
-            # Handles / pointers below the bar
             handle_y = by1 + 5
             handle_h = 18
             for _hx, val, label, color in xs:
@@ -1808,14 +1990,13 @@ class PMVApp:
                 c.create_text(hx, handle_y + handle_h + 10, text=f'{val:.2f}',
                               fill=color, font=('Consolas', 8), tags=tag2)
 
-            # Scale labels
             for frac in [0, 0.25, 0.5, 0.75, 1.0]:
                 sv = vmin + frac * (vmax - vmin)
                 sx = vx(sv)
                 c.create_text(sx, by0 - 8, text=f'{sv:.1f}', fill='#888888',
                               font=('Consolas', 8))
 
-        # Draw zones
+        # Draw bar based on mode
         if self._learn_ready:
             yl = self._learn_yellow_left
             gl = self._learn_green_left
@@ -1831,7 +2012,6 @@ class PMVApp:
                                fill='', outline='#ffffff', width=2, dash=(4, 2))
         elif scan_rec is not None:
             # Live scan mode — show matched metal zones (read-only, no drag)
-            # Convert resistivity thresholds to %IACS (inverted order)
             yl = 100.0 / scan_rec.values[4]
             gl = 100.0 / scan_rec.values[3]
             gr = 100.0 / scan_rec.values[2]
@@ -1839,25 +2019,30 @@ class PMVApp:
 
             _draw_zones(yl, gl, gr, yr, draggable=False)
         else:
-            # During collection — just show a neutral bar with sample dots
+            # Neutral bar (idle or during collection)
             c.create_rectangle(bx0, by0, bx1, by1, fill='#2a2a3e', outline='#444444')
-            for s in samples[-100:]:  # last 100 samples as dots
-                sx = vx(s)
-                c.create_oval(sx - 2, by0 + bh // 2 - 2, sx + 2, by0 + bh // 2 + 2,
-                              fill='#00aaff', outline='')
-            # Scale
-            for frac in [0, 0.5, 1.0]:
+            if samples:
+                omn = min(samples)
+                omx = max(samples)
+                c.create_rectangle(vx(omn), by0 + 2, vx(omx), by1 - 2,
+                                   fill='', outline='#00aaff', width=2, dash=(4, 2))
+            for frac in [0, 0.25, 0.5, 0.75, 1.0]:
                 sv = vmin + frac * (vmax - vmin)
                 sx = vx(sv)
                 c.create_text(sx, by0 - 8, text=f'{sv:.1f}', fill='#888888',
                               font=('Consolas', 8))
 
-        # Live needle
+        # Live needle — prominent triangle + line indicator
         if self._learn_live_value is not None:
             nx = vx(self._learn_live_value)
-            c.create_line(nx, by0 - 3, nx, by1 + 3, fill='white', width=2)
-            c.create_text(nx, by0 - 18, text=f'{self._learn_live_value:.2f}',
-                          fill='white', font=('Consolas', 10, 'bold'))
+            # Thick vertical line through the bar
+            c.create_line(nx, by0 - 2, nx, by1 + 2, fill='#ffffff', width=3)
+            # Downward-pointing triangle above the bar
+            c.create_polygon(nx, by0 - 4, nx - 7, by0 - 16, nx + 7, by0 - 16,
+                             fill='#ff4444', outline='white', width=1)
+            # Value label above the triangle
+            c.create_text(nx, by0 - 26, text=f'{self._learn_live_value:.2f}',
+                          fill='#ff4444', font=('Consolas', 11, 'bold'))
 
         # Title
         c.create_text(cw / 2, 15, text='%IACS  (100 / resistivity)',
@@ -1969,10 +2154,24 @@ class PMVApp:
         rec = Record(name, cat_id, values)
 
         if self.loaded_db:
+            if len(self.loaded_db.records) >= 49:
+                messagebox.showerror('Database Full',
+                                     'The database already has 49 records (device firmware limit).\n\n'
+                                     'Remove a record in the Database Read tab before adding a new one.')
+                return
             self.loaded_db.records.append(rec)
             self._log_msg(f'Added "{name}" as record #{len(self.loaded_db.records)}')
             # Refresh the flash tab tree
             self._flash_load_db(self.loaded_db)
+            # Also refresh the read tab tree if it has data
+            if hasattr(self, '_read_tree'):
+                self._read_tree.delete(*self._read_tree.get_children())
+                for i, r in enumerate(self.loaded_db.records):
+                    c = CATEGORIES.get(r.category_id, '?')
+                    v = r.values
+                    self._read_tree.insert('', 'end', values=(
+                        i, r.name.strip(), c,
+                        f'{v[0]:.1f}', f'{v[1]:.1f}', f'{v[2]:.1f}', f'{v[3]:.1f}'))
             messagebox.showinfo('Added',
                                 f'"{name}" added as record #{len(self.loaded_db.records)}.\n\n'
                                 f'Use the Flash tab to save the .dat file and upload to device.')
